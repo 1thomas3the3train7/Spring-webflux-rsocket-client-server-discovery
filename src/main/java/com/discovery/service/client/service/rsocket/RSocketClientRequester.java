@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
@@ -26,20 +27,21 @@ public abstract class RSocketClientRequester {
     protected ServiceType serviceType = null;
     protected List<LoadbalanceTarget> loadbalanceTargets = new ArrayList<>();
     protected final Gson gson;
-    protected final AtomicReference<RSocketRequester> rSocketRequester = new AtomicReference<>();
+    protected Mono<RSocketRequester> rSocketRequester;
 
     public RSocketClientRequester(Gson gson, ServiceType serviceType) {
         this.gson = gson;
         this.serviceType = serviceType;
     }
 
-    public void refreshRequester() {
+    public Mono<Void> refreshRequester() {
         log.info("REFRESH RSOCKET REQUESTER, TARGETS: {}", fromLoadBalanceTarget());
-        rSocketRequester.set(
-                RSocketRequester.builder()
+        return Mono.fromCallable(() -> RSocketRequester.builder()
                 .rsocketConnector(r -> r.reconnect(Retry.fixedDelay(2, Duration.ofSeconds(2))))
                 .dataMimeType(MimeTypeUtils.APPLICATION_JSON)
-                .transports(Mono.just(this.loadbalanceTargets), new RoundRobinLoadbalanceStrategy()));
+                .transports(Mono.just(this.loadbalanceTargets), new RoundRobinLoadbalanceStrategy()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
     }
 
     ;
@@ -73,14 +75,14 @@ public abstract class RSocketClientRequester {
                 .toList();
     }
 
-    public void compareAndRebuild(List<ServiceInfo> services) {
+    public Mono<Void> compareAndRebuild(List<ServiceInfo> services) {
         final var currList = fromLoadBalanceTarget();
         final var listFromDiscovery = services.stream()
                 .filter(s -> Objects.equals(s.getServiceType(), this.serviceType))
                 .toList();
         if (listFromDiscovery.size() > currList.size()) {
             buildLoadBalanceTargets(listFromDiscovery);
-            refreshRequester();
+            return refreshRequester();
         } else {
             for (ServiceInfo serviceInfo : currList) {
                 if (!listFromDiscovery.contains(serviceInfo)) {
@@ -89,5 +91,7 @@ public abstract class RSocketClientRequester {
                 }
             }
         }
+
+        return Mono.empty();
     }
 }

@@ -8,7 +8,7 @@ public interface DiscoveryService {
 
     Mono<DiscoveryDto> heartBeat();
 
-    void deletedService(DiscoveryDto discoveryDto);
+    Mono<Void> deletedService(DiscoveryDto discoveryDto);
 
     Mono<DiscoveryDto> refreshConfig(DiscoveryDto discoveryDto);
 }

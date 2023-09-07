@@ -6,7 +6,7 @@ import com.discovery.service.client.service.rsocket.RSocketClientRequester;
 import com.discovery.service.model.discovery.DiscoveryDto;
 import com.discovery.service.model.discovery.ServiceInfo;
 import com.discovery.service.model.discovery.ServiceStatus;
-import lombok.*;
+import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -46,13 +46,13 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                 .body(Mono.just(discoveryDto), DiscoveryDto.class)
                 .retrieve()
                 .bodyToMono(DiscoveryDto.class)
-                .map(disc -> {
-                    rSocketClientRequesters.forEach(f -> {
-                        f.buildLoadBalanceTargets(disc.getServiceInfo().getServiceToConnected());
-                        f.refreshRequester();
-                    });
-                    return disc;
-                })
+                .flatMap(disc -> Flux.fromIterable(rSocketClientRequesters)
+                        .flatMap(rSocketClientRequester -> {
+                            rSocketClientRequester.buildLoadBalanceTargets(disc.getServiceInfo().getServiceToConnected());
+                            return rSocketClientRequester.refreshRequester();
+                        })
+                        .collectList()
+                        .map(list -> disc))
                 .subscribeOn(Schedulers.boundedElastic())
                 .retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
                 .doOnError(throwable -> {
@@ -72,29 +72,31 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                 .bodyValue(discoveryDto)
                 .retrieve()
                 .bodyToMono(DiscoveryDto.class)
-                .map(disc -> {
-                    rSocketClientRequesters.forEach(f -> f.compareAndRebuild(disc.getServiceInfo().getServiceToConnected()));
-                    return disc;
-                });
+                .flatMap(disc -> Flux.fromIterable(rSocketClientRequesters)
+                        .flatMap(rSocketClientRequester -> rSocketClientRequester.compareAndRebuild(disc.getServiceInfo().getServiceToConnected()))
+                        .collectList()
+                        .map(v -> disc));
     }
 
     @Override
-    public void deletedService(DiscoveryDto discoveryDto) {
+    public Mono<Void> deletedService(DiscoveryDto discoveryDto) {
         final ServiceInfo requestService = discoveryDto.getServiceInfo();
         if (Objects.equals(discoveryDto.getServiceStatus(), ServiceStatus.DELETE)) {
-            rSocketClientRequesters.stream().filter(req -> Objects.equals(req.getServiceType(), requestService.getServiceType()))
-                    .forEach(f -> {
-                        f.deleteLoadBalanceTarget(requestService);
-                        f.refreshRequester();
-                    });
+            return Flux.fromIterable(rSocketClientRequesters.stream().filter(req -> Objects.equals(req.getServiceType(), requestService.getServiceType())).toList())
+                    .flatMap(rSocketClientRequester -> {
+                        rSocketClientRequester.deleteLoadBalanceTarget(requestService);
+                        return rSocketClientRequester.refreshRequester();
+                    })
+                    .collectList()
+                    .then();
         }
+        return Mono.empty();
     }
 
     @Override
     public Mono<DiscoveryDto> refreshConfig(DiscoveryDto discoveryDto) {
         return null;
     }
-
 
 
     @Override
