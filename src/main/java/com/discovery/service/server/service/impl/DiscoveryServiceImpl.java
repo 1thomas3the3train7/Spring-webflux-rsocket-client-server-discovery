@@ -138,7 +138,7 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                     return list;
                 })
                 .flatMap(list -> reactiveRedisTemplate.opsForValue().set(redisKey, gson.toJson(list)))
-                .flatMapIterable(b -> discoveryDto.getServiceInfo().getServiceToConnected())
+                .flatMapIterable(b -> discoveryDto.getServiceInfo().getServiceToConnected() == null ? new ArrayList<>() : discoveryDto.getServiceInfo().getServiceToConnected())
                 .flatMap(serviceInfo -> reactiveRedisTemplate.opsForValue().get(discoveryServiceUtils.buildServicesRedisKey(serviceInfo.getServiceType())))
                 .map(s -> gson.<List<ServiceInfo>>fromJson(s, listServiceInfo))
                 .collectList()
@@ -174,7 +174,7 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                     return servicesFromRedis;
                 })
                 .flatMap(list -> reactiveRedisTemplate.opsForValue().set(redisKey, gson.toJson(list)))
-                .flatMapIterable(b -> discoveryDto.getServiceInfo().getServiceToConnected())
+                .flatMapIterable(b -> discoveryDto.getServiceInfo().getServiceToConnected() == null ? new ArrayList<>() : discoveryDto.getServiceInfo().getServiceToConnected())
                 .flatMap(serviceInfo -> reactiveRedisTemplate.opsForValue().get(discoveryServiceUtils.buildServicesRedisKey(serviceInfo.getServiceType())))
                 .map(s -> gson.<List<ServiceInfo>>fromJson(s, listServiceInfo))
                 .collectList()
