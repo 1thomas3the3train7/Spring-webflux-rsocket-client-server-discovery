@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Getter
@@ -36,11 +35,13 @@ public abstract class RSocketClientRequester {
 
     public Mono<Void> refreshRequester() {
         log.info("REFRESH RSOCKET REQUESTER, TARGETS: {}", fromLoadBalanceTarget());
-        return Mono.fromCallable(() -> RSocketRequester.builder()
-                .rsocketConnector(r -> r.reconnect(Retry.fixedDelay(2, Duration.ofSeconds(2))))
-                .dataMimeType(MimeTypeUtils.APPLICATION_JSON)
-                .transports(Mono.just(this.loadbalanceTargets), new RoundRobinLoadbalanceStrategy()))
-                .subscribeOn(Schedulers.boundedElastic())
+        rSocketRequester = Mono.fromCallable(() -> RSocketRequester.builder()
+                        .rsocketConnector(r -> r.reconnect(Retry.fixedDelay(2, Duration.ofSeconds(2))))
+                        .dataMimeType(MimeTypeUtils.APPLICATION_JSON)
+                        .transports(Mono.just(this.loadbalanceTargets), new RoundRobinLoadbalanceStrategy()))
+                .subscribeOn(Schedulers.boundedElastic());
+
+        return rSocketRequester
                 .then();
     }
 
