@@ -24,18 +24,17 @@ public abstract class ConfigController {
 
     @PostMapping("/heartbeat")
     public Mono<DiscoveryDto> heartbeat(@RequestBody DiscoveryDto discoveryDto) {
-        return Mono.fromCallable(() -> {
-                    if (discoveryDto.getServiceStatus() != null && Objects.equals(discoveryDto.getServiceStatus(), ServiceStatus.DELETE)) {
-                        discoveryService.deletedService(discoveryDto);
-                    }
-                    final DiscoveryDto disc = DiscoveryDto.builder()
-                            .serviceStatus(ServiceStatus.HEARTBEAT)
-                            .serviceInfo(clientServiceConfig.buildInfo())
-                            .build();
-                    return disc;
-                })
-                .subscribeOn(Schedulers.boundedElastic());
+        final DiscoveryDto disc = DiscoveryDto.builder()
+                .serviceStatus(ServiceStatus.HEARTBEAT)
+                .serviceInfo(clientServiceConfig.buildInfo())
+                .build();
 
+        if (discoveryDto.getServiceStatus() != null && Objects.equals(discoveryDto.getServiceStatus(), ServiceStatus.DELETE)) {
+            return discoveryService.deletedService(discoveryDto)
+                    .then(Mono.defer(() -> Mono.just(disc)));
+        }
+
+        return Mono.just(disc);
 
     }
 }
