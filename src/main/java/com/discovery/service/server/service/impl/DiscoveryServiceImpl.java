@@ -113,7 +113,11 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                                 .uri(discoveryServiceUtils.buildServiceUrl(service) + "/discovery/heartbeat")
                                 .bodyValue(DiscoveryDto.builder().serviceStatus(ServiceStatus.DELETE).serviceInfo(serviceDeleted).build())
                                 .retrieve()
-                                .bodyToMono(String.class))
+                                .bodyToMono(String.class)
+                                .onErrorResume(throwable -> {
+                                    log.warn("ERROR SEND MESSAGE ABOUT DELETED SERVICE, {}, {}", service, throwable.getMessage());
+                                    return Mono.just(throwable.getMessage());
+                                }))
                         .collectList())
                 .then();
     }
