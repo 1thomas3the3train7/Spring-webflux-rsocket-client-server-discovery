@@ -11,7 +11,7 @@
 
 	<groupId>com.discovery</groupId>
 	<artifactId>Spring-webflux-rsocket-client-server-discovery</artifactId>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 
 	<description>RSocket discovery service and client</description>
 	<properties>
