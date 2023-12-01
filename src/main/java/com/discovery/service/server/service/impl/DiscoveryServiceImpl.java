@@ -46,6 +46,7 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                 .flatMap(v -> {
                     final ServiceType[] serviceTypes = ServiceType.values();
                     return Flux.fromArray(serviceTypes)
+                            .filter(serviceType -> serviceType != ServiceType.DISCOVERY)
                             .parallel(4)
                             .runOn(Schedulers.parallel())
                             .flatMap(curr -> reactiveRedisTemplate.opsForValue()
@@ -62,11 +63,27 @@ public class DiscoveryServiceImpl implements DiscoveryService, CommandLineRunner
                                             .bodyValue(serviceInfo)
                                             .retrieve()
                                             .bodyToMono(DiscoveryDto.class)
-                                            .map(discoveryDto -> {
+                                            .flatMap(discoveryDto -> {
                                                 if (!Objects.equals(discoveryDto.getServiceInfo(), serviceInfo)) {
                                                     log.warn("SERVICE NOT EQUALS, REQUEST: {}, RESPONSE: {}", serviceInfo, discoveryDto.getServiceInfo());
+                                                    return reactiveRedisTemplate.opsForValue()
+                                                            .get(discoveryServiceUtils.buildServicesRedisKey(serviceInfo.getServiceType()))
+                                                            .mapNotNull(s -> {
+                                                                List<ServiceInfo> serviceInfos = gson.fromJson(s, listServiceInfo);
+                                                                for (int i = 0; i < serviceInfos.size(); i++) {
+                                                                    final ServiceInfo serviceInfo1 = serviceInfos.get(i);
+                                                                    if (Objects.equals(discoveryServiceUtils.buildServiceUrl(serviceInfo), discoveryServiceUtils.buildServiceUrl(serviceInfo1))) {
+                                                                        serviceInfos.remove(serviceInfo1);
+                                                                        serviceInfos.add(discoveryDto.getServiceInfo());
+                                                                        return serviceInfos;
+                                                                    }
+                                                                }
+                                                                return null;
+                                                            })
+                                                            .flatMap(serviceInfo1 -> reactiveRedisTemplate.opsForValue()
+                                                                    .set(discoveryServiceUtils.buildServicesRedisKey(serviceInfo.getServiceType()), gson.toJson(serviceInfo1)));
                                                 }
-                                                return discoveryDto;
+                                                return Mono.just(discoveryDto);
                                             })
                                             .onErrorResume(throwable -> {
                                                 log.warn("ERROR IN HEARTBEAT SERVICE, REQUEST: {}", serviceInfo);
